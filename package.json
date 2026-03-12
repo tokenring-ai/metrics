@@ -1,0 +1,28 @@
+{
+  "name": "@tokenring-ai/metrics",
+  "version": "0.2.0",
+  "description": "Metrics tracking package for TokenRing",
+  "dependencies": {
+    "zod": "^4.3.6",
+    "@tokenring-ai/agent": "0.2.0",
+    "@tokenring-ai/utility": "0.2.0",
+    "@tokenring-ai/app": "0.2.0"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./*": "./*.ts"
+  },
+  "types": "./index.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "type": "module"
+}
