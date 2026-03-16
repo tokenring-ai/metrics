@@ -3,4 +3,4 @@ import cost from "./commands/cost.ts";
 
 export default [
   cost
-] satisfies TokenRingAgentCommand[];
+] as const satisfies readonly TokenRingAgentCommand<any>[];

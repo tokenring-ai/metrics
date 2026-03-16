@@ -1,21 +1,11 @@
-import {Agent} from "@tokenring-ai/agent";
-import type {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
+import type {AgentCommandInputSchema, AgentCommandInputType, TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 import {CostTrackingState} from "../state/costTrackingState.ts";
 
+const inputSchema = {} as const satisfies AgentCommandInputSchema;
+
 const description = "Displays total costs incurred by the Agent." as const;
-export function execute(remainder: string, agent: Agent): string {
-  const lines = agent.getState(CostTrackingState).show();
 
-  return lines.join("\n");
-}
-
-const help: string = `# /costs
-
-## Description
-Displays total costs incurred by the Agent, including AI Chat, Image Generation, and Web Search costs.
-
-## Commands
-- **(no argument)** - Shows total costs incurred by the Agent
+const help: string = `Displays total costs incurred by the Agent, including AI Chat, Image Generation, and Web Search costs.
 
 ## Notes
 - Costs are summed from the beginning of the current session until the current time
@@ -25,6 +15,10 @@ Displays total costs incurred by the Agent, including AI Chat, Image Generation,
 export default {
   name: "costs",
   description,
-  execute,
+  inputSchema,
+  execute: ({agent}: AgentCommandInputType<typeof inputSchema>): string => {
+    const lines = agent.getState(CostTrackingState).show();
+    return lines.join("\n");
+  },
   help,
-} satisfies TokenRingAgentCommand;
+} satisfies TokenRingAgentCommand<typeof inputSchema>;
