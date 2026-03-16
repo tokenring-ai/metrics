@@ -2,7 +2,7 @@ import {Agent} from "@tokenring-ai/agent";
 import type {TokenRingAgentCommand} from "@tokenring-ai/agent/types";
 import {CostTrackingState} from "../state/costTrackingState.ts";
 
-const description = "/cost - Displays total costs incurred by the Agent." as const;
+const description = "Displays total costs incurred by the Agent." as const;
 export function execute(remainder: string, agent: Agent): string {
   const lines = agent.getState(CostTrackingState).show();
 
