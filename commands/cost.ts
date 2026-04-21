@@ -1,5 +1,5 @@
-import type {AgentCommandInputSchema, AgentCommandInputType, TokenRingAgentCommand} from "@tokenring-ai/agent/types";
-import {CostTrackingState} from "../state/costTrackingState.ts";
+import type { AgentCommandInputSchema, AgentCommandInputType, TokenRingAgentCommand } from "@tokenring-ai/agent/types";
+import { CostTrackingState } from "../state/costTrackingState.ts";
 
 const inputSchema = {} as const satisfies AgentCommandInputSchema;
 
@@ -16,7 +16,7 @@ export default {
   name: "costs",
   description,
   inputSchema,
-  execute: ({agent}: AgentCommandInputType<typeof inputSchema>): string => {
+  execute: ({ agent }: AgentCommandInputType<typeof inputSchema>): string => {
     return agent.getState(CostTrackingState).show();
   },
   help,

@@ -1,6 +1,6 @@
-import {AgentStateSlice} from "@tokenring-ai/agent/types";
+import { AgentStateSlice } from "@tokenring-ai/agent/types";
 import markdownList from "@tokenring-ai/utility/string/markdownList";
-import {z} from "zod";
+import { z } from "zod";
 
 type Costs = Record<string, number>;
 
@@ -10,9 +10,7 @@ const serializationSchema = z
   })
   .prefault({});
 
-export class CostTrackingState extends AgentStateSlice<
-  typeof serializationSchema
-> {
+export class CostTrackingState extends AgentStateSlice<typeof serializationSchema> {
   costs: Costs;
 
   constructor(readonly initialCosts: Costs = {}) {
@@ -25,7 +23,7 @@ export class CostTrackingState extends AgentStateSlice<
   }
 
   serialize(): z.output<typeof serializationSchema> {
-    return {costs: this.costs};
+    return { costs: this.costs };
   }
 
   deserialize(data: z.output<typeof serializationSchema>): void {
@@ -34,9 +32,7 @@ export class CostTrackingState extends AgentStateSlice<
 
   show(): string {
     const totalCost = Object.values(this.costs).reduce((a, b) => a + b, 0);
-    return `Overall Costs: $${totalCost.toLocaleString(undefined, {minimumFractionDigits: 4})}
-${markdownList(Object.entries(this.costs).map(
-      ([key, value]) => `${key} Cost: $${value.toLocaleString(undefined, {minimumFractionDigits: 4})}`,
-    ))}`;
+    return `Overall Costs: $${totalCost.toLocaleString(undefined, { minimumFractionDigits: 4 })}
+${markdownList(Object.entries(this.costs).map(([key, value]) => `${key} Cost: $${value.toLocaleString(undefined, { minimumFractionDigits: 4 })}`))}`;
   }
 }
