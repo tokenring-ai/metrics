@@ -4,9 +4,9 @@
   "description": "Performance tracking and analytics for agents and internal services.",
   "dependencies": {
     "zod": "^4.3.6",
-    "@tokenring-ai/agent": "0.2.0",
-    "@tokenring-ai/utility": "0.2.0",
-    "@tokenring-ai/app": "0.2.0"
+    "@tokenring-ai/agent": "workspace:*",
+    "@tokenring-ai/utility": "workspace:*",
+    "@tokenring-ai/app": "workspace:*"
   },
   "exports": {
     ".": "./index.ts",

@@ -2,7 +2,9 @@
 
 ## Overview
 
-Metrics tracking package for TokenRing that provides comprehensive cost tracking and performance metrics for AI agents. This package integrates with the Token Ring agent system to collect, persist, and display metrics about agent operations including AI chat costs, image generation costs, and other resource usage.
+Metrics tracking package for TokenRing that provides comprehensive cost tracking and performance metrics for AI agents.
+This package integrates with the Token Ring agent system to collect, persist, and display metrics about agent operations
+including AI chat costs, image generation costs, and other resource usage.
 
 ## Key Features
 
@@ -180,7 +182,8 @@ The configuration is validated using Zod schema (`MetricsServiceConfigSchema`).
 
 Displays total costs incurred by the Agent.
 
-**Description**: Shows cumulative costs from the beginning of the current session, including AI Chat, Image Generation, Web Search, and other tracked categories.
+**Description**: Shows cumulative costs from the beginning of the current session, including AI Chat, Image Generation,
+Web Search, and other tracked categories.
 
 **Output Format**:
 
