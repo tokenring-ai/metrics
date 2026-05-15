@@ -1,4 +1,5 @@
 import { AgentStateSlice } from "@tokenring-ai/agent/types";
+import deepClone from "@tokenring-ai/utility/object/deepClone";
 import markdownList from "@tokenring-ai/utility/string/markdownList";
 import { z } from "zod";
 
@@ -15,7 +16,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
 
   constructor(readonly initialCosts: Costs = {}) {
     super("CostTrackingState", serializationSchema);
-    this.costs = initialCosts;
+    this.costs = deepClone(initialCosts);
   }
 
   reset(): void {
@@ -27,7 +28,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
   }
 
   deserialize(data: z.output<typeof serializationSchema>): void {
-    this.costs = data.costs;
+    this.costs = { ...data.costs };
   }
 
   show(): string {
