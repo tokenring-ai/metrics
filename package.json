@@ -1,7 +1,7 @@
 {
   "name": "@tokenring-ai/metrics",
   "version": "0.2.0",
-  "description": "Performance tracking and analytics for agents and internal services.",
+  "description": "Metrics tracking package for TokenRing that provides comprehensive cost tracking and performance metrics for AI agents.",
   "dependencies": {
     "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",

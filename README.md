@@ -2,18 +2,21 @@
 
 ## Overview
 
-Metrics tracking package for TokenRing that provides comprehensive cost tracking and performance metrics for AI agents.
-This package integrates with the Token Ring agent system to collect, persist, and display metrics about agent operations
-including AI chat costs, image generation costs, and other resource usage.
+Metrics tracking package for TokenRing that provides comprehensive cost tracking and performance metrics for AI agents. This package integrates with the Token Ring agent system to collect, persist, and display metrics about agent operations including AI chat costs, image generation costs, and other resource usage.
 
-## Key Features
+**Key features:**
 
-- **Cost Tracking**: Sum and track costs by category (AI Chat, Image Generation, Web Search, etc.)
-- **State Persistence**: Costs are persisted across sessions using the agent's state management system
-- **Agent Integration**: Seamlessly integrates with Token Ring agents via the MetricsService
-- **Command Interface**: Provides `/costs` command to display current cost metrics
-- **Type-Safe**: Fully typed with TypeScript and Zod schemas
-- **Plugin Architecture**: Installable as a Token Ring plugin for easy integration
+- Cost tracking and aggregation by category
+- State persistence across sessions
+- Seamless agent integration via MetricsService
+- Chat command interface for cost display
+- Type-safe implementation with TypeScript and Zod
+
+**Integration points:**
+
+- @tokenring-ai/agent - Agent orchestration and state management
+- @tokenring-ai/app - Application framework and plugin system
+- @tokenring-ai/utility - Shared utilities
 
 ## Installation
 
@@ -23,10 +26,64 @@ bun add @tokenring-ai/metrics
 
 ## Dependencies
 
-- `@tokenring-ai/agent`: Agent orchestration and state management
-- `@tokenring-ai/app`: Application framework and plugin system
-- `@tokenring-ai/utility`: Shared utilities
-- `zod`: Schema validation
+- `@tokenring-ai/agent` - Agent orchestration and state management
+- `@tokenring-ai/app` - Application framework and plugin system
+- `@tokenring-ai/utility` - Shared utilities
+- `zod` - Schema validation
+
+## Features
+
+- **Cost Tracking**: Sum and track costs by category (AI Chat, Image Generation, Web Search, etc.)
+- **State Persistence**: Costs are persisted across sessions using the agent's state management system
+- **Agent Integration**: Seamlessly integrates with Token Ring agents via the MetricsService
+- **Command Interface**: Provides `/costs` command to display current cost metrics
+- **Type-Safe**: Fully typed with TypeScript and Zod schemas
+- **Plugin Architecture**: Installable as a Token Ring plugin for easy integration
+
+## Chat Commands
+
+| Command | Description |
+|---------|-------------|
+| `/costs` | Displays total costs incurred by the Agent |
+
+### `/costs`
+
+Displays total costs incurred by the Agent, including AI Chat, Image Generation, Web Search, and other tracked categories.
+
+**Output Format:**
+
+```text
+Overall Costs: $0.0475
+- AI Chat Cost: $0.0025
+- Image Generation Cost: $0.0350
+- Web Search Cost: $0.0100
+```
+
+**Notes:**
+
+- Costs are summed from the beginning of the current session until the current time
+- Costs are displayed in USD with 4 decimal places
+- Categories are dynamically tracked based on what costs are added
+
+## Tools
+
+This package does not define any tools.
+
+## Configuration
+
+The package accepts a configuration object via the plugin or service constructor. The current schema is empty, designed for future extensibility.
+
+### ENV Variables
+
+This package does not require any environment variables.
+
+### Configuration Example
+
+```yaml
+metrics: {}
+```
+
+The configuration is validated using Zod schema (`MetricsServiceConfigSchema`).
 
 ## Core Components
 
@@ -38,14 +95,14 @@ The core service that collects and manages metrics data.
 
 **Purpose**: Collects metrics about the agent's performance, particularly cost tracking.
 
-**Methods**:
+**Methods:**
 
 ```typescript
 class MetricsService implements TokenRingService {
   readonly name = "MetricsService";
-  readonly description = "Collects metrics about the agent's performance.";
+  description = "Collects metrics about the agent's performance.";
 
-  constructor(options: MetricsServiceConfig)
+  constructor(options: MetricsServiceConfig);
 
   /**
    * Attach the service to an agent and initialize state
@@ -70,14 +127,14 @@ State slice for tracking costs across sessions.
 
 **Purpose**: Persists cost data in the agent's state with serialization/deserialization support.
 
-**Properties**:
+**Properties:**
 
 - `costs: Record<string, number>` - Map of cost categories to amounts
 
-**Methods**:
+**Methods:**
 
 ```typescript
-class CostTrackingState extends AgentStateSlice {
+class CostTrackingState extends AgentStateSlice<typeof serializationSchema> {
   costs: Costs;
 
   constructor(initialCosts?: Costs);
@@ -98,10 +155,10 @@ class CostTrackingState extends AgentStateSlice {
   deserialize(data: { costs: Record<string, number> }): void;
 
   /**
-   * Display costs as formatted lines
-   * @returns Array of formatted cost strings
+   * Display costs as formatted string
+   * @returns Formatted cost string with overall total and per-category breakdown
    */
-  show(): string[];
+  show(): string;
 }
 ```
 
@@ -143,8 +200,7 @@ metricsService.addCost('Web Search', 0.01, agent);
 const costState = agent.getState(CostTrackingState);
 
 // Display formatted costs
-const costLines = costState.show();
-console.log(costLines.join('\n'));
+console.log(costState.show());
 
 // Output:
 // Overall Costs: $0.0475
@@ -160,45 +216,6 @@ console.log(costLines.join('\n'));
 const costState = agent.getState(CostTrackingState);
 costState.reset();
 ```
-
-## Configuration
-
-The package accepts a configuration object via the plugin or service constructor:
-
-```typescript
-import { MetricsServiceConfigSchema } from '@tokenring-ai/metrics/schema';
-
-// Current schema (empty, can be extended)
-const config = {
-  metrics: {}
-};
-```
-
-The configuration is validated using Zod schema (`MetricsServiceConfigSchema`).
-
-## Chat Commands
-
-### `/costs`
-
-Displays total costs incurred by the Agent.
-
-**Description**: Shows cumulative costs from the beginning of the current session, including AI Chat, Image Generation,
-Web Search, and other tracked categories.
-
-**Output Format**:
-
-```
-Overall Costs: $0.0475
-- AI Chat Cost: $0.0025
-- Image Generation Cost: $0.0350
-- Web Search Cost: $0.0100
-```
-
-**Notes**:
-
-- Costs are summed from the beginning of the current session until the current time
-- Costs are displayed in USD with 4 decimal places
-- Categories are dynamically tracked based on what costs are added
 
 ## State Management
 
@@ -242,19 +259,19 @@ The metrics package is designed to work with:
 
 ```bash
 cd pkg/metrics
-bun test
+bun run test
 ```
 
 ### Running Tests in Watch Mode
 
 ```bash
-bun test --watch
+bun run test:watch
 ```
 
 ### Running Tests with Coverage
 
 ```bash
-bun test --coverage
+bun run test:coverage
 ```
 
 ### Building
