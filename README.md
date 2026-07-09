@@ -102,7 +102,7 @@ class MetricsService implements TokenRingService {
   readonly name = "MetricsService";
   description = "Collects metrics about the agent's performance.";
 
-  constructor(options: MetricsServiceConfig);
+  constructor(options: z.output<typeof MetricsServiceConfigSchema>);
 
   /**
    * Attach the service to an agent and initialize state
@@ -130,6 +130,7 @@ State slice for tracking costs across sessions.
 **Properties:**
 
 - `costs: Record<string, number>` - Map of cost categories to amounts
+- `initialCosts: Costs` - Initial costs provided at construction (readonly)
 
 **Methods:**
 
@@ -137,10 +138,10 @@ State slice for tracking costs across sessions.
 class CostTrackingState extends AgentStateSlice<typeof serializationSchema> {
   costs: Costs;
 
-  constructor(initialCosts?: Costs);
+  constructor(readonly initialCosts: Costs = {});
 
   /**
-   * Reset all costs to zero
+   * Clear all costs by resetting the costs record to an empty object
    */
   reset(): void;
 
@@ -157,10 +158,21 @@ class CostTrackingState extends AgentStateSlice<typeof serializationSchema> {
   /**
    * Display costs as formatted string
    * @returns Formatted cost string with overall total and per-category breakdown
+   *   Uses markdownList utility for consistent formatting
    */
   show(): string;
 }
 ```
+
+## Exports
+
+| Export Path | Description |
+|-------------|-------------|
+| `@tokenring-ai/metrics` | Main entry point, exports `MetricsService` |
+| `@tokenring-ai/metrics/plugin` | TokenRing plugin for app installation |
+| `@tokenring-ai/metrics/schema` | Zod schemas for configuration validation |
+| `@tokenring-ai/metrics/commands` | Agent command definitions |
+| `@tokenring-ai/metrics/state/costTrackingState` | `CostTrackingState` class |
 
 ## Usage Examples
 
@@ -296,4 +308,4 @@ MIT License - see LICENSE file for details.
 
 - [@tokenring-ai/agent](../agent/README.md) - Core agent orchestration
 - [@tokenring-ai/app](../app/README.md) - Application framework
-- [@tokenring-ai/ai-client](../ai-client/README.md) - AI client for cost tracking integration
+- [@tokenring-ai/utility](../utility/README.md) - Shared utilities (deepClone, markdownList)
