@@ -10,6 +10,7 @@ Metrics tracking package for TokenRing that provides comprehensive cost tracking
 - State persistence across sessions
 - Seamless agent integration via MetricsService
 - Chat command interface for cost display
+- RPC endpoint for live cost summaries (web Metrics dashboard)
 - Type-safe implementation with TypeScript and Zod
 
 **Integration points:**
@@ -64,6 +65,17 @@ Overall Costs: $0.0475
 - Costs are summed from the beginning of the current session until the current time
 - Costs are displayed in USD with 4 decimal places
 - Categories are dynamically tracked based on what costs are added
+
+## RPC
+
+Registered at `/rpc/metrics` when `RpcService` is available:
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `getCostSummary` | query | Snapshot of all agent costs + category totals |
+| `streamCostSummary` | stream | Live updates (~2s poll) of the cost summary |
+| `getAgentCosts` | query | Costs for a single agent |
+| `resetAgentCosts` | mutation | Clear cost counters for one agent |
 
 ## Tools
 

@@ -6,7 +6,8 @@
     "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
-    "@tokenring-ai/app": "workspace:*"
+    "@tokenring-ai/app": "workspace:*",
+    "@tokenring-ai/rpc": "workspace:*"
   },
   "exports": {
     ".": "./index.ts",
