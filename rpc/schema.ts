@@ -22,6 +22,16 @@ export const CostSummarySchema = z.object({
 export type AgentCosts = z.output<typeof AgentCostsSchema>;
 export type CostSummary = z.output<typeof CostSummarySchema>;
 
+export const AgentStatusMetricsSchema = z.object({
+  status: z.literal("success"),
+  model: z.string().nullable(),
+  maxContextLength: z.number().int().nonnegative().nullable(),
+  tools: z.number().int().nonnegative(),
+  tokens: z.number().int().nonnegative(),
+  cost: z.number().nonnegative(),
+  contextPercentLeft: z.number().int().min(0).max(100).nullable(),
+});
+
 export default {
   name: "Metrics RPC",
   path: "/rpc/metrics",
@@ -35,6 +45,13 @@ export default {
       type: "stream",
       input: z.object({}),
       result: CostSummarySchema,
+    },
+    streamAgentStatus: {
+      type: "stream",
+      input: z.object({
+        agentId: z.string(),
+      }),
+      result: z.discriminatedUnion("status", [AgentStatusMetricsSchema, AgentNotFoundSchema]),
     },
     getAgentCosts: {
       type: "query",

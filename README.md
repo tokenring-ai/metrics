@@ -74,6 +74,7 @@ Registered at `/rpc/metrics` when `RpcService` is available:
 |--------|------|-------------|
 | `getCostSummary` | query | Snapshot of all agent costs + category totals |
 | `streamCostSummary` | stream | Live updates (~2s poll) of the cost summary |
+| `streamAgentStatus` | stream | Live per-agent model/tool/token/cost/context snapshot |
 | `getAgentCosts` | query | Costs for a single agent |
 | `resetAgentCosts` | mutation | Clear cost counters for one agent |
 
