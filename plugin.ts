@@ -26,5 +26,5 @@ export default {
       rpcService.registerEndpoint(metricsRPC);
     });
   },
-  config: packageConfigSchema,
+  configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
