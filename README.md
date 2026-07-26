@@ -17,6 +17,7 @@ Metrics tracking package for TokenRing that provides comprehensive cost tracking
 
 - @tokenring-ai/agent - Agent orchestration and state management
 - @tokenring-ai/app - Application framework and plugin system
+- @tokenring-ai/rpc - RPC endpoint for remote cost queries
 - @tokenring-ai/utility - Shared utilities
 
 ## Installation
@@ -29,7 +30,10 @@ bun add @tokenring-ai/metrics
 
 - `@tokenring-ai/agent` - Agent orchestration and state management
 - `@tokenring-ai/app` - Application framework and plugin system
+- `@tokenring-ai/rpc` - RPC endpoint support
 - `@tokenring-ai/utility` - Shared utilities
+- `@tokenring-ai/ai-client` - AI client integration
+- `@tokenring-ai/chat` - Chat integration
 - `zod` - Schema validation
 
 ## Features
@@ -38,6 +42,7 @@ bun add @tokenring-ai/metrics
 - **State Persistence**: Costs are persisted across sessions using the agent's state management system
 - **Agent Integration**: Seamlessly integrates with Token Ring agents via the MetricsService
 - **Command Interface**: Provides `/costs` command to display current cost metrics
+- **RPC Endpoints**: Query and stream cost summaries for dashboard integration
 - **Type-Safe**: Fully typed with TypeScript and Zod schemas
 - **Plugin Architecture**: Installable as a Token Ring plugin for easy integration
 
@@ -66,18 +71,6 @@ Overall Costs: $0.0475
 - Costs are displayed in USD with 4 decimal places
 - Categories are dynamically tracked based on what costs are added
 
-## RPC
-
-Registered at `/rpc/metrics` when `RpcService` is available:
-
-| Method | Type | Description |
-|--------|------|-------------|
-| `getCostSummary` | query | Snapshot of all agent costs + category totals |
-| `streamCostSummary` | stream | Live updates (~2s poll) of the cost summary |
-| `streamAgentStatus` | stream | Live per-agent model/tool/token/cost/context snapshot |
-| `getAgentCosts` | query | Costs for a single agent |
-| `resetAgentCosts` | mutation | Clear cost counters for one agent |
-
 ## Tools
 
 This package does not define any tools.
@@ -97,6 +90,48 @@ metrics: {}
 ```
 
 The configuration is validated using Zod schema (`MetricsServiceConfigSchema`).
+
+## RPC
+
+Registered at `/rpc/metrics` when `RpcService` is available:
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `getCostSummary` | query | Snapshot of all agent costs and category totals |
+| `streamCostSummary` | stream | Live updates (~2s poll) of the cost summary |
+| `getAgentCosts` | query | Costs for a single agent by agentId |
+| `resetAgentCosts` | mutation | Clear cost counters for one agent |
+
+### RPC Schema Types
+
+#### AgentCosts
+
+Represents cost data for a single agent:
+
+```typescript
+interface AgentCosts {
+  agentId: string;
+  displayName: string;
+  agentType: string;
+  idle: boolean;
+  costs: Record<string, number>;
+  total: number;
+}
+```
+
+#### CostSummary
+
+Aggregated cost summary across all agents:
+
+```typescript
+interface CostSummary {
+  agents: AgentCosts[];
+  totalsByCategory: Record<string, number>;
+  grandTotal: number;
+  agentCount: number;
+  activeAgentCount: number;
+}
+```
 
 ## Core Components
 
@@ -171,21 +206,57 @@ class CostTrackingState extends AgentStateSlice<typeof serializationSchema> {
   /**
    * Display costs as formatted string
    * @returns Formatted cost string with overall total and per-category breakdown
-   *   Uses markdownList utility for consistent formatting
    */
   show(): string;
 }
 ```
 
+### Cost Summary Helpers
+
+Utility functions for reading and aggregating agent cost data.
+
+**Location**: `costSummary.ts`
+
+#### `readAgentCosts(agent: Agent): AgentCosts`
+
+Reads the current cost tracking state from an agent and returns an `AgentCosts` object. Handles cases where the state may not be initialized.
+
+```typescript
+import { readAgentCosts } from '@tokenring-ai/metrics/costSummary';
+
+const costs = readAgentCosts(agent);
+// { agentId, displayName, agentType, idle, costs, total }
+```
+
+#### `aggregateCostSummary(agentCosts: AgentCosts[]): CostSummary`
+
+Aggregates cost data from multiple agents into a single `CostSummary`. Agents are sorted by total cost (descending).
+
+```typescript
+import { aggregateCostSummary } from '@tokenring-ai/metrics/costSummary';
+
+const allAgentCosts = agents.map(a => readAgentCosts(a));
+const summary = aggregateCostSummary(allAgentCosts);
+// { agents, totalsByCategory, grandTotal, agentCount, activeAgentCount }
+```
+
+### RPC Schema
+
+Zod schemas for RPC communication.
+
+**Location**: `rpc/schema.ts`
+
+- `AgentCostsSchema` - Schema for individual agent cost data
+- `CostSummarySchema` - Schema for aggregated cost summary
+
 ## Exports
 
-| Export Path | Description |
-|-------------|-------------|
-| `@tokenring-ai/metrics` | Main entry point, exports `MetricsService` |
-| `@tokenring-ai/metrics/plugin` | TokenRing plugin for app installation |
-| `@tokenring-ai/metrics/schema` | Zod schemas for configuration validation |
-| `@tokenring-ai/metrics/commands` | Agent command definitions |
-| `@tokenring-ai/metrics/state/costTrackingState` | `CostTrackingState` class |
+| Export | Description |
+|--------|-------------|
+| `MetricsService` | Core metrics service class (default export) |
+| `AgentCosts` | Type for individual agent cost data |
+| `CostSummary` | Type for aggregated cost summary |
+| `CostTrackingState` | Agent state slice for cost tracking |
 
 ## Usage Examples
 
@@ -269,6 +340,8 @@ The package exports a `TokenRingPlugin` that:
 1. Registers `MetricsService` with the app
 2. Waits for `AgentCommandService` to be available
 3. Registers the `/costs` command with agent command service
+4. Waits for `RpcService` to be available
+5. Registers the `/rpc/metrics` endpoint
 
 ### With Other Packages
 
@@ -283,7 +356,7 @@ The metrics package is designed to work with:
 ### Running Tests
 
 ```bash
-cd pkg/metrics
+cd plugin/metrics
 bun run test
 ```
 
@@ -309,7 +382,7 @@ bun run build
 
 - **Runtime**: Bun
 - **Language**: TypeScript
-- **Testing**: Vitest
+- **Testing**: Bun test
 - **Validation**: Zod
 - **State Management**: Agent state slices
 
@@ -321,4 +394,5 @@ MIT License - see LICENSE file for details.
 
 - [@tokenring-ai/agent](../agent/README.md) - Core agent orchestration
 - [@tokenring-ai/app](../app/README.md) - Application framework
+- [@tokenring-ai/rpc](../rpc/README.md) - RPC framework
 - [@tokenring-ai/utility](../utility/README.md) - Shared utilities (deepClone, markdownList)
