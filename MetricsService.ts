@@ -1,14 +1,24 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import type { z } from "zod";
-import type { MetricsServiceConfigSchema } from "./schema.ts";
+import { MetricsServiceConfigSchema } from "./schema.ts";
 import { CostTrackingState } from "./state/costTrackingState.ts";
+
+type MetricsServiceConfig = z.output<typeof MetricsServiceConfigSchema>;
 
 export default class MetricsService implements TokenRingService {
   readonly name = "MetricsService";
   description = "Collects metrics about the agent's performance.";
 
-  constructor(private options: z.output<typeof MetricsServiceConfigSchema>) {}
+  private options = MetricsServiceConfigSchema.parse({});
+
+  constructor(options?: MetricsServiceConfig) {
+    if (options) this.options = options;
+  }
+
+  reconfigure(options: MetricsServiceConfig): void {
+    this.options = options;
+  }
 
   attach(agent: Agent): void {
     agent.initializeState(CostTrackingState, {});

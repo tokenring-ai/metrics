@@ -17,14 +17,17 @@ export default {
   displayName: "Metrics & Monitoring",
   version: packageJSON.version,
   description: packageJSON.description,
-  install(app, config) {
-    app.addServices(new MetricsService(config.metrics));
+  install(app) {
+    app.addServices(new MetricsService());
     app.waitForService(AgentCommandService, agentCommandService => {
       agentCommandService.addAgentCommands(...agentCommands);
     });
     app.waitForService(RpcService, rpcService => {
       rpcService.registerEndpoint(metricsRPC);
     });
+  },
+  reconfigure(app, config) {
+    app.requireService(MetricsService).reconfigure(config.metrics);
   },
   configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
