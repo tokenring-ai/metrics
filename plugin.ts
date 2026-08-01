@@ -18,7 +18,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app) {
-    app.addServices(new MetricsService());
+    app.addService(new MetricsService());
     app.waitForService(AgentCommandService, agentCommandService => {
       agentCommandService.addAgentCommands(...agentCommands);
     });
