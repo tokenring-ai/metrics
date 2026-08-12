@@ -52,11 +52,16 @@ export default createRPCEndpoint(MetricsRpcSchema, {
     }
 
     try {
-      agent.mutateState(CostTrackingState, state => {
-        state.reset();
-      });
+      app.requireService(MetricsService).resetAgentMetrics(agent);
     } catch {
       // Agent may not have metrics state attached yet — treat as success (already empty).
+      try {
+        agent.mutateState(CostTrackingState, state => {
+          state.reset();
+        });
+      } catch {
+        // already empty
+      }
     }
 
     return { status: "success" as const };
