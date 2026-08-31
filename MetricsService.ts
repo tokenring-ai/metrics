@@ -22,6 +22,8 @@ export default class MetricsService implements TokenRingService {
 
   metricsProvider: MetricsStorage | null = null;
 
+  private persistInFlight = new Set<string>();
+  private persistQueued = new Set<string>();
   private options = MetricsServiceConfigSchema.parse({});
 
   constructor(options?: MetricsServiceConfig) {
@@ -159,9 +161,22 @@ export default class MetricsService implements TokenRingService {
 
   private schedulePersist(agent: Agent): void {
     if (!this.metricsProvider) return;
-    void this.persistAgentMetrics(agent).catch(err => {
-      console.warn(`[${this.name}] Failed to persist metrics for ${agent.id}:`, err);
-    });
+    if (this.persistInFlight.has(agent.id)) {
+      this.persistQueued.add(agent.id);
+      return;
+    }
+    this.persistInFlight.add(agent.id);
+    void this.persistAgentMetrics(agent)
+      .catch(err => {
+        console.warn(`[${this.name}] Failed to persist metrics for ${agent.id}:`, err);
+      })
+      .finally(() => {
+        this.persistInFlight.delete(agent.id);
+        if (this.persistQueued.has(agent.id)) {
+          this.persistQueued.delete(agent.id);
+          this.schedulePersist(agent);
+        }
+      });
   }
 
   private async hydrateFromStorage(agent: Agent): Promise<void> {

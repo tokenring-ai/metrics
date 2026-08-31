@@ -84,6 +84,19 @@ function aggregateTokens(agents: AgentCosts[]): TokenUsageTotals {
   return tokens;
 }
 
+function weightedLatencyPercentile(agents: AgentCosts[], field: "p50ElapsedMs" | "p95ElapsedMs" | "p99ElapsedMs"): number | undefined {
+  let weighted = 0;
+  let weight = 0;
+  for (const agent of agents) {
+    const n = agent.latency.requestCount;
+    const value = agent.latency[field];
+    if (n <= 0 || value === undefined) continue;
+    weighted += value * n;
+    weight += n;
+  }
+  return weight > 0 ? weighted / weight : undefined;
+}
+
 function aggregateLatency(agents: AgentCosts[]): LatencySummary {
   let requestCount = 0;
   let weightedElapsed = 0;
@@ -107,11 +120,18 @@ function aggregateLatency(agents: AgentCosts[]): LatencySummary {
     }
   }
 
+  const p50ElapsedMs = weightedLatencyPercentile(agents, "p50ElapsedMs");
+  const p95ElapsedMs = weightedLatencyPercentile(agents, "p95ElapsedMs");
+  const p99ElapsedMs = weightedLatencyPercentile(agents, "p99ElapsedMs");
+
   return {
     requestCount,
     avgElapsedMs: requestCount > 0 ? weightedElapsed / requestCount : 0,
     avgTimeToFirstTokenMs: ttftWeight > 0 ? weightedTtft / ttftWeight : 0,
     avgTokensPerSecond: tpsWeight > 0 ? weightedTps / tpsWeight : 0,
+    ...(p50ElapsedMs !== undefined && { p50ElapsedMs }),
+    ...(p95ElapsedMs !== undefined && { p95ElapsedMs }),
+    ...(p99ElapsedMs !== undefined && { p99ElapsedMs }),
   };
 }
 

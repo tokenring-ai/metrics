@@ -42,7 +42,15 @@ describe("aggregateCostSummary", () => {
         costs: { "Chat (m)": 1, "Image Generation (m)": 2 },
         idle: false,
         tokens: { totalInputTokens: 100, totalOutputTokens: 50, totalCachedTokens: 10, totalReasoningTokens: 5 },
-        latency: { requestCount: 2, avgElapsedMs: 200, avgTimeToFirstTokenMs: 40, avgTokensPerSecond: 30 },
+        latency: {
+          requestCount: 2,
+          avgElapsedMs: 200,
+          avgTimeToFirstTokenMs: 40,
+          avgTokensPerSecond: 30,
+          p50ElapsedMs: 180,
+          p95ElapsedMs: 300,
+          p99ElapsedMs: 400,
+        },
         errors: { errorsByProvider: { openai: 1 }, errorsByType: { timeout: 1 }, retryCount: 2 },
         activity: { totalSteps: 3, totalToolCalls: 4, toolCallsByName: { read_file: 4 } },
       }),
@@ -51,7 +59,15 @@ describe("aggregateCostSummary", () => {
         total: 1,
         costs: { "Chat (m)": 1 },
         tokens: { totalInputTokens: 20, totalOutputTokens: 10, totalCachedTokens: 0, totalReasoningTokens: 0 },
-        latency: { requestCount: 1, avgElapsedMs: 100, avgTimeToFirstTokenMs: 20, avgTokensPerSecond: 20 },
+        latency: {
+          requestCount: 1,
+          avgElapsedMs: 100,
+          avgTimeToFirstTokenMs: 20,
+          avgTokensPerSecond: 20,
+          p50ElapsedMs: 90,
+          p95ElapsedMs: 150,
+          p99ElapsedMs: 180,
+        },
         activity: { totalSteps: 1, totalToolCalls: 1, toolCallsByName: { search: 1 } },
       }),
     ]);
@@ -70,6 +86,9 @@ describe("aggregateCostSummary", () => {
 
     expect(summary.latency.requestCount).toBe(3);
     expect(summary.latency.avgElapsedMs).toBeCloseTo((200 * 2 + 100) / 3);
+    expect(summary.latency.p50ElapsedMs).toBeCloseTo((180 * 2 + 90) / 3);
+    expect(summary.latency.p95ElapsedMs).toBeCloseTo((300 * 2 + 150) / 3);
+    expect(summary.latency.p99ElapsedMs).toBeCloseTo((400 * 2 + 180) / 3);
 
     expect(summary.errors.errorsByProvider.openai).toBe(1);
     expect(summary.errors.retryCount).toBe(2);
