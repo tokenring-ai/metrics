@@ -11,6 +11,7 @@
   },
   "exports": {
     ".": "./index.ts",
+    "./frontend/*": "./frontend/*",
     "./*": "./*.ts"
   },
   "types": "./index.ts",
