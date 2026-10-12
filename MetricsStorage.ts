@@ -100,6 +100,40 @@ export const ActivityMetricsSchema = z
 
 export type ActivityMetrics = z.output<typeof ActivityMetricsSchema>;
 
+/** One time bucket of spend: cost, tokens and request count recorded inside it. */
+export const SpendPointSchema = z.object({
+  /** Bucket start, epoch ms (aligned to the bucket size). */
+  t: z.number(),
+  cost: z.number().default(0),
+  inputTokens: z.number().default(0),
+  outputTokens: z.number().default(0),
+  requests: z.number().default(0),
+});
+
+export type SpendPoint = z.output<typeof SpendPointSchema>;
+
+/**
+ * Bounded spend time series kept per agent. `fine` holds 5-minute buckets for
+ * the last day (the 1h range), `hourly` holds hour buckets for the last 30
+ * days (every other range). Both are sorted by `t` ascending.
+ */
+export const SpendHistorySchema = z
+  .object({
+    fine: z.array(SpendPointSchema).default([]),
+    hourly: z.array(SpendPointSchema).default([]),
+  })
+  .prefault({});
+
+export type SpendHistory = z.output<typeof SpendHistorySchema>;
+
+/** Who an agent was, stamped onto persisted metrics so history outlives the agent. */
+export const AgentIdentitySchema = z.object({
+  displayName: z.string(),
+  agentType: z.string(),
+});
+
+export type AgentIdentity = z.output<typeof AgentIdentitySchema>;
+
 /** Full per-agent metrics payload stored and tracked in-memory. */
 export const AgentMetricsDataSchema = z
   .object({
@@ -109,6 +143,9 @@ export const AgentMetricsDataSchema = z
     latency: LatencyMetricsSchema,
     errors: ErrorMetricsSchema,
     activity: ActivityMetricsSchema,
+    spendHistory: SpendHistorySchema,
+    /** Set when persisted; absent on in-memory state. */
+    identity: AgentIdentitySchema.optional(),
   })
   .prefault({});
 
@@ -123,9 +160,7 @@ export const AgentMetricsSchema = z.object({
 
 export type AgentMetrics = z.input<typeof AgentMetricsSchema>;
 
-export const StoredAgentMetricsSchema = AgentMetricsSchema;
-
-export type StoredAgentMetrics = z.output<typeof StoredAgentMetricsSchema>;
+export type StoredAgentMetrics = z.output<typeof AgentMetricsSchema>;
 
 export const AgentMetricsListItemSchema = z.object({
   agentId: z.string(),
@@ -136,6 +171,8 @@ export const AgentMetricsListItemSchema = z.object({
   totalSteps: z.number(),
   totalToolCalls: z.number(),
   updatedAt: z.number(),
+  displayName: z.string().optional(),
+  agentType: z.string().optional(),
 });
 
 export type AgentMetricsListItem = z.output<typeof AgentMetricsListItemSchema>;
@@ -158,6 +195,12 @@ export interface MetricsStorage {
 
   /** Remove stored metrics for an agent. */
   deleteAgentMetrics(agentId: string): MaybePromise<void>;
+
+  /**
+   * Full stored metrics for every agent (used for cross-session spend series).
+   * Optional: backends without it only contribute live agents to the series.
+   */
+  listAllAgentMetrics?(): MaybePromise<StoredAgentMetrics[]>;
 }
 
 /** Max recent latency samples retained for percentile approximation. */
@@ -227,6 +270,7 @@ export function totalCostFromMetrics(metrics: AgentMetricsData): number {
 export function toAgentMetricsListItem(agentId: string, metrics: AgentMetricsData, updatedAt: number): AgentMetricsListItem {
   return AgentMetricsListItemSchema.parse({
     agentId,
+    ...(metrics.identity && { displayName: metrics.identity.displayName, agentType: metrics.identity.agentType }),
     totalCost: totalCostFromMetrics(metrics),
     totalInputTokens: metrics.tokens.totalInputTokens,
     totalOutputTokens: metrics.tokens.totalOutputTokens,
@@ -235,4 +279,101 @@ export function toAgentMetricsListItem(agentId: string, metrics: AgentMetricsDat
     totalToolCalls: metrics.activity.totalToolCalls,
     updatedAt,
   });
+}
+
+// ── Spend time series ───────────────────────────────────────────────────────
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+export const SPEND_FINE_BUCKET_MS = 5 * MINUTE_MS;
+export const SPEND_FINE_RETENTION_MS = DAY_MS;
+export const SPEND_HOURLY_BUCKET_MS = HOUR_MS;
+export const SPEND_HOURLY_RETENTION_MS = 31 * DAY_MS;
+
+export type SpendDelta = { cost?: number; inputTokens?: number; outputTokens?: number; requests?: number };
+
+function addToSeries(series: SpendPoint[], bucketMs: number, retentionMs: number, now: number, delta: SpendDelta): SpendPoint[] {
+  const t = Math.floor(now / bucketMs) * bucketMs;
+  // Walk back from the end: samples almost always land in the newest bucket.
+  let index = series.length - 1;
+  while (index >= 0 && series[index]!.t > t) index--;
+  let point = index >= 0 && series[index]!.t === t ? series[index]! : undefined;
+  if (!point) {
+    point = { t, cost: 0, inputTokens: 0, outputTokens: 0, requests: 0 };
+    series.splice(index + 1, 0, point);
+  }
+  point.cost += delta.cost ?? 0;
+  point.inputTokens += delta.inputTokens ?? 0;
+  point.outputTokens += delta.outputTokens ?? 0;
+  point.requests += delta.requests ?? 0;
+
+  const cutoff = now - retentionMs;
+  let drop = 0;
+  while (drop < series.length && series[drop]!.t + bucketMs <= cutoff) drop++;
+  if (drop > 0) series.splice(0, drop);
+  return series;
+}
+
+/** Add a sample to both resolutions of a spend history (mutates and returns it). */
+export function recordSpendSample(history: SpendHistory, delta: SpendDelta, now = Date.now()): SpendHistory {
+  addToSeries(history.fine, SPEND_FINE_BUCKET_MS, SPEND_FINE_RETENTION_MS, now, delta);
+  addToSeries(history.hourly, SPEND_HOURLY_BUCKET_MS, SPEND_HOURLY_RETENTION_MS, now, delta);
+  return history;
+}
+
+export const SPEND_RANGES = ["1h", "24h", "7d", "30d"] as const;
+export type SpendRange = (typeof SPEND_RANGES)[number];
+
+/** Window length, bucket size and source resolution for each selectable range. */
+export const SPEND_RANGE_CONFIG: Record<SpendRange, { windowMs: number; bucketMs: number; source: keyof SpendHistory }> = {
+  "1h": { windowMs: HOUR_MS, bucketMs: SPEND_FINE_BUCKET_MS, source: "fine" },
+  "24h": { windowMs: DAY_MS, bucketMs: HOUR_MS, source: "hourly" },
+  "7d": { windowMs: 7 * DAY_MS, bucketMs: 6 * HOUR_MS, source: "hourly" },
+  "30d": { windowMs: 30 * DAY_MS, bucketMs: DAY_MS, source: "hourly" },
+};
+
+export type SpendSeries = {
+  range: SpendRange;
+  bucketMs: number;
+  start: number;
+  end: number;
+  buckets: SpendPoint[];
+  totals: Omit<SpendPoint, "t">;
+};
+
+/**
+ * Sum several agents' spend histories into fixed buckets covering `range`
+ * ending at `now`. Buckets are epoch-aligned (UTC), the last one contains
+ * `now`, and empty buckets are included so the chart has a stable x axis.
+ */
+export function bucketSpendSeries(histories: Iterable<SpendHistory>, range: SpendRange, now = Date.now()): SpendSeries {
+  const { windowMs, bucketMs, source } = SPEND_RANGE_CONFIG[range];
+  const count = Math.round(windowMs / bucketMs);
+  const end = (Math.floor(now / bucketMs) + 1) * bucketMs;
+  const start = end - count * bucketMs;
+  const buckets: SpendPoint[] = Array.from({ length: count }, (_, i) => ({
+    t: start + i * bucketMs,
+    cost: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    requests: 0,
+  }));
+  const totals = { cost: 0, inputTokens: 0, outputTokens: 0, requests: 0 };
+  for (const history of histories) {
+    for (const point of history[source]) {
+      if (point.t < start || point.t >= end) continue;
+      const bucket = buckets[Math.floor((point.t - start) / bucketMs)]!;
+      bucket.cost += point.cost;
+      bucket.inputTokens += point.inputTokens;
+      bucket.outputTokens += point.outputTokens;
+      bucket.requests += point.requests;
+      totals.cost += point.cost;
+      totals.inputTokens += point.inputTokens;
+      totals.outputTokens += point.outputTokens;
+      totals.requests += point.requests;
+    }
+  }
+  return { range, bucketMs, start, end, buckets, totals };
 }

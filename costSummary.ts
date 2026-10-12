@@ -1,7 +1,7 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
-import { latencySummary } from "./MetricsStorage.ts";
-import type { ActivityMetricsSummary, AgentCosts, CostSummary, ErrorMetricsSummary, LatencySummary, TokenUsageTotals } from "./rpc/schema.ts";
+import { type AgentMetricsData, latencySummary } from "./MetricsStorage.ts";
+import type { ActivityMetricsSummary, AgentCosts, CostSummary, ErrorMetricsSummary, LatencySummary, TokensByCategory, TokenUsageTotals } from "./rpc/schema.ts";
 import { ActivityMetricsSummarySchema, ErrorMetricsSummarySchema, LatencySummarySchema, TokenUsageTotalsSchema } from "./rpc/schema.ts";
 import { CostTrackingState } from "./state/costTrackingState.ts";
 
@@ -16,18 +16,26 @@ function addRecordCounts(target: Record<string, number>, source: Record<string, 
   }
 }
 
-export function readAgentCosts(agent: Agent): AgentCosts {
+/** The metric fields both CostTrackingState and stored AgentMetricsData carry. */
+type MetricsSource = Pick<AgentMetricsData, "costs" | "tokens" | "tokensByCategory" | "latency" | "errors" | "activity">;
+
+/** Project raw metrics (live state or a stored record) into the RPC per-agent shape. */
+export function agentCostsFromMetrics(
+  source: MetricsSource | null,
+  meta: { agentId: string; displayName: string; agentType: string; idle: boolean },
+): AgentCosts {
   let costs: Record<string, number> = {};
   let tokens = emptyTokens();
+  let tokensByCategory: TokensByCategory = {};
   let latency = emptyLatency();
   let errors = emptyErrors();
   let activity = emptyActivity();
 
-  try {
-    const state = agent.getState(CostTrackingState);
-    costs = { ...state.costs };
-    tokens = { ...state.tokens };
-    const summary = latencySummary(state.latency);
+  if (source) {
+    costs = { ...source.costs };
+    tokens = { ...source.tokens };
+    tokensByCategory = Object.fromEntries(Object.entries(source.tokensByCategory).map(([key, value]) => [key, { ...value }]));
+    const summary = latencySummary(source.latency);
     latency = {
       requestCount: summary.requestCount,
       avgElapsedMs: summary.avgElapsedMs,
@@ -36,22 +44,44 @@ export function readAgentCosts(agent: Agent): AgentCosts {
       ...(summary.p50ElapsedMs !== undefined && { p50ElapsedMs: summary.p50ElapsedMs }),
       ...(summary.p95ElapsedMs !== undefined && { p95ElapsedMs: summary.p95ElapsedMs }),
       ...(summary.p99ElapsedMs !== undefined && { p99ElapsedMs: summary.p99ElapsedMs }),
+      ...(summary.p50TimeToFirstTokenMs !== undefined && { p50TimeToFirstTokenMs: summary.p50TimeToFirstTokenMs }),
+      ...(summary.p95TimeToFirstTokenMs !== undefined && { p95TimeToFirstTokenMs: summary.p95TimeToFirstTokenMs }),
+      ...(summary.p99TimeToFirstTokenMs !== undefined && { p99TimeToFirstTokenMs: summary.p99TimeToFirstTokenMs }),
     };
     errors = {
-      errorsByProvider: { ...state.errors.errorsByProvider },
-      errorsByType: { ...state.errors.errorsByType },
-      retryCount: state.errors.retryCount,
+      errorsByProvider: { ...source.errors.errorsByProvider },
+      errorsByType: { ...source.errors.errorsByType },
+      retryCount: source.errors.retryCount,
     };
     activity = {
-      totalSteps: state.activity.totalSteps,
-      totalToolCalls: state.activity.totalToolCalls,
-      toolCallsByName: { ...state.activity.toolCallsByName },
+      totalSteps: source.activity.totalSteps,
+      totalToolCalls: source.activity.totalToolCalls,
+      toolCallsByName: { ...source.activity.toolCallsByName },
     };
+  }
+
+  const total = Object.values(costs).reduce((sum, value) => sum + value, 0);
+
+  return {
+    ...meta,
+    costs,
+    total,
+    tokens,
+    tokensByCategory,
+    latency,
+    errors,
+    activity,
+  };
+}
+
+export function readAgentCosts(agent: Agent): AgentCosts {
+  let state: CostTrackingState | null = null;
+  try {
+    state = agent.getState(CostTrackingState);
   } catch {
     // Agent may not have metrics state yet.
   }
 
-  const total = Object.values(costs).reduce((sum, value) => sum + value, 0);
   let idle: boolean;
   try {
     idle = agent.getState(AgentEventState).idle;
@@ -59,18 +89,12 @@ export function readAgentCosts(agent: Agent): AgentCosts {
     idle = true;
   }
 
-  return {
+  return agentCostsFromMetrics(state, {
     agentId: agent.id,
     displayName: agent.displayName,
     agentType: agent.config.agentType,
     idle,
-    costs,
-    total,
-    tokens,
-    latency,
-    errors,
-    activity,
-  };
+  });
 }
 
 function aggregateTokens(agents: AgentCosts[]): TokenUsageTotals {
@@ -84,7 +108,27 @@ function aggregateTokens(agents: AgentCosts[]): TokenUsageTotals {
   return tokens;
 }
 
-function weightedLatencyPercentile(agents: AgentCosts[], field: "p50ElapsedMs" | "p95ElapsedMs" | "p99ElapsedMs"): number | undefined {
+function aggregateTokensByCategory(agents: AgentCosts[]): TokensByCategory {
+  const result: TokensByCategory = {};
+  for (const agent of agents) {
+    for (const [category, usage] of Object.entries(agent.tokensByCategory)) {
+      const target = (result[category] ??= emptyTokens());
+      target.totalInputTokens += usage.totalInputTokens;
+      target.totalOutputTokens += usage.totalOutputTokens;
+      target.totalCachedTokens += usage.totalCachedTokens;
+      target.totalReasoningTokens += usage.totalReasoningTokens;
+    }
+  }
+  return result;
+}
+
+type PercentileField = "p50ElapsedMs" | "p95ElapsedMs" | "p99ElapsedMs" | "p50TimeToFirstTokenMs" | "p95TimeToFirstTokenMs" | "p99TimeToFirstTokenMs";
+
+/**
+ * Request-weighted mean of per-agent percentiles. An approximation (the true
+ * fleet percentile needs the raw samples), but stable and cheap.
+ */
+function weightedLatencyPercentile(agents: AgentCosts[], field: PercentileField): number | undefined {
   let weighted = 0;
   let weight = 0;
   for (const agent of agents) {
@@ -123,6 +167,9 @@ function aggregateLatency(agents: AgentCosts[]): LatencySummary {
   const p50ElapsedMs = weightedLatencyPercentile(agents, "p50ElapsedMs");
   const p95ElapsedMs = weightedLatencyPercentile(agents, "p95ElapsedMs");
   const p99ElapsedMs = weightedLatencyPercentile(agents, "p99ElapsedMs");
+  const p50TimeToFirstTokenMs = weightedLatencyPercentile(agents, "p50TimeToFirstTokenMs");
+  const p95TimeToFirstTokenMs = weightedLatencyPercentile(agents, "p95TimeToFirstTokenMs");
+  const p99TimeToFirstTokenMs = weightedLatencyPercentile(agents, "p99TimeToFirstTokenMs");
 
   return {
     requestCount,
@@ -132,6 +179,9 @@ function aggregateLatency(agents: AgentCosts[]): LatencySummary {
     ...(p50ElapsedMs !== undefined && { p50ElapsedMs }),
     ...(p95ElapsedMs !== undefined && { p95ElapsedMs }),
     ...(p99ElapsedMs !== undefined && { p99ElapsedMs }),
+    ...(p50TimeToFirstTokenMs !== undefined && { p50TimeToFirstTokenMs }),
+    ...(p95TimeToFirstTokenMs !== undefined && { p95TimeToFirstTokenMs }),
+    ...(p99TimeToFirstTokenMs !== undefined && { p99TimeToFirstTokenMs }),
   };
 }
 
@@ -173,6 +223,7 @@ export function aggregateCostSummary(agentCosts: AgentCosts[]): CostSummary {
     agentCount: agentCosts.length,
     activeAgentCount: agentCosts.filter(agent => !agent.idle).length,
     tokens: aggregateTokens(agentCosts),
+    tokensByCategory: aggregateTokensByCategory(agentCosts),
     latency: aggregateLatency(agentCosts),
     errors: aggregateErrors(agentCosts),
     activity: aggregateActivity(agentCosts),

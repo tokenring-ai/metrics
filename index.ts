@@ -27,7 +27,6 @@ export {
   LatencySampleInputSchema,
   latencySummary,
   normalizeTokenUsageInput,
-  StoredAgentMetricsSchema,
   TokenUsageByCategorySchema,
   TokenUsageInputSchema,
   TokenUsageTotalsSchema,

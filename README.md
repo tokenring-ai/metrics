@@ -19,6 +19,18 @@ usage.
 - **Command Interface**: Provides `/costs` command to display current cost
   metrics
 - **RPC Endpoints**: Query and stream cost summaries for dashboard integration
+- **Spend over time**: Every cost, token and request sample is bucketed per
+  agent (5-minute buckets for a day, hourly buckets for 31 days) and summed
+  across live and stored agents for 1h / 24h / 7d / 30d charts
+- **Cross-session history**: Persisted metrics (via a `MetricsStorage`
+  provider such as `@tokenring-ai/bun-storage`) are listed alongside running
+  agents, each stamped with the agent's name and type
+- **Per-model tokens**: Input / output / cached / reasoning tokens per cost
+  category (one per model), next to that category's cost
+- **Latency percentiles**: p50 / p95 / p99 request time and time to first
+  token, over each agent's last 100 requests
+- **Metrics dashboard**: Overview, Agent spend (CSV export, per-agent and
+  global reset), History (sortable, CSV export) and a per-agent detail view
 - **Type-Safe**: Fully typed with TypeScript and Zod schemas
 - **Plugin Architecture**: Installable as a TokenRing plugin for easy
   integration
@@ -231,6 +243,26 @@ Registered at `/rpc/metrics` when `RpcService` is available:
 | `streamCostSummary` | stream | Live updates (~2s poll) of the cost summary |
 | `getAgentCosts` | query | Costs for a single agent by `agentId` |
 | `resetAgentCosts` | mutation | Clear cost counters for one agent |
+| `resetAllAgentCosts` | mutation | Clear counters for every running agent; returns `{ status, resetCount }` |
+| `getSpendSeries` | query | `{ range: "1h" \| "24h" \| "7d" \| "30d" }` → bucketed cost / tokens / requests |
+| `listAgentMetricsHistory` | query | Running and stored agents with totals; `persisted: false` when no storage |
+| `getAgentMetricsHistory` | query | Full `AgentCosts` breakdown for a running or stored agent |
+
+### Spend series buckets
+
+| Range | Bucket | Source resolution |
+|-------|--------|-------------------|
+| `1h` | 5 minutes (12) | `spendHistory.fine` |
+| `24h` | 1 hour (24) | `spendHistory.hourly` |
+| `7d` | 6 hours (28) | `spendHistory.hourly` |
+| `30d` | 1 day (30) | `spendHistory.hourly` |
+
+Buckets are aligned to UTC epoch multiples and empty buckets are included, so
+the chart has a stable x axis. Live agents contribute their in-memory history;
+stored agents that are no longer running contribute their persisted history
+(requires a provider implementing the optional
+`MetricsStorage.listAllAgentMetrics()`). Spend recorded before this feature
+existed has no timestamps and is not charted.
 
 ### `getAgentCosts` and `resetAgentCosts` Result Types
 
@@ -254,6 +286,13 @@ interface AgentCosts {
   idle: boolean;
   costs: Record<string, number>;
   total: number;
+  tokens: TokenUsageTotals;
+  /** Token totals per cost category (per model). */
+  tokensByCategory: Record<string, TokenUsageTotals>;
+  /** avg / p50 / p95 / p99 request time and time to first token. */
+  latency: LatencySummary;
+  errors: ErrorMetricsSummary;
+  activity: ActivityMetricsSummary;
 }
 ```
 
@@ -268,8 +307,29 @@ interface CostSummary {
   grandTotal: number;
   agentCount: number;
   activeAgentCount: number;
+  tokens: TokenUsageTotals;
+  tokensByCategory: Record<string, TokenUsageTotals>;
+  latency: LatencySummary; // request-weighted mean of per-agent percentiles
+  errors: ErrorMetricsSummary;
+  activity: ActivityMetricsSummary;
 }
 ```
+
+## Frontend
+
+The Metrics dashboard (`/metrics`, `frontend/app.tsx`) contributes these views:
+
+| View id | Content |
+|---------|---------|
+| `metrics-cost-summary` | Compact cost card for the Home dashboard |
+| `metrics-overview` | Totals, latency percentiles, spend-over-time chart (range + cost/tokens toggle), spend mix, tokens-by-model table, categories |
+| `metrics-agents` | Running agents with filters, sort, expandable breakdown, per-agent reset, **Reset all** (confirmed) and **CSV** export of the shown rows |
+| `metrics-history` | Every agent with stored or live metrics, sortable columns, search and **CSV** export; a row opens the detail view |
+| `metrics-agent-detail` | Instanceable (`{ agentId }`): full breakdown for one running or stored agent |
+
+Charts are drawn with plain CSS bars, like the rest of the views. Hooks for
+the non-streaming RPC methods live in `frontend/lib/metricsQueries.ts`; CSV
+building (RFC 4180 quoting, formula-injection guard) in `frontend/lib/csv.ts`.
 
 ## Exports
 
@@ -374,9 +434,16 @@ The metrics package is designed to work with:
 
 ### Test Files
 
-- `costSummary.test.ts` - Unit tests for `aggregateCostSummary`, covering
-  category aggregation, grand totals, agent counts, sorting, and the empty
-  agent list edge case
+- `costSummary.test.ts` - Unit tests for `aggregateCostSummary` and
+  `agentCostsFromMetrics`, covering category and per-model token aggregation,
+  latency and TTFT percentiles, and the empty agent list edge case
+- `spendSeries.test.ts` - Spend sample bucketing, retention and range
+  coarsening, plus History merging of live and stored agents
+- `MetricsService.test.ts` - State tracking, persistence (identity and spend
+  history), per-agent and global reset
+- `frontend/views/metricsViews.test.tsx` - Dashboard views, including the
+  spend chart, model table, history sort / detail and CSV export
+- `frontend/lib/csv.test.ts`, `frontend/features/metrics/formatters.test.ts`
 
 ### Running Tests
 

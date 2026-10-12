@@ -17,6 +17,9 @@ import {
   latencySummary,
   normalizeTokenUsageInput,
   pushBoundedSample,
+  recordSpendSample,
+  type SpendHistory,
+  SpendHistorySchema,
   type TokenUsageByCategory,
   TokenUsageByCategorySchema,
   type TokenUsageInput,
@@ -34,6 +37,7 @@ const serializationSchema = z
     latency: LatencyMetricsSchema,
     errors: ErrorMetricsSchema,
     activity: ActivityMetricsSchema,
+    spendHistory: SpendHistorySchema,
   })
   .prefault({});
 
@@ -44,6 +48,8 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
   latency: LatencyMetrics;
   errors: ErrorMetrics;
   activity: ActivityMetrics;
+  /** Bucketed spend over time, the source of the Metrics "spend over time" chart. */
+  spendHistory: SpendHistory;
 
   constructor(readonly initialCosts: Costs = {}) {
     super("CostTrackingState", serializationSchema);
@@ -53,6 +59,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
     this.latency = LatencyMetricsSchema.parse({});
     this.errors = ErrorMetricsSchema.parse({});
     this.activity = ActivityMetricsSchema.parse({});
+    this.spendHistory = SpendHistorySchema.parse({});
   }
 
   reset(): void {
@@ -62,23 +69,27 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
     this.latency = LatencyMetricsSchema.parse({});
     this.errors = ErrorMetricsSchema.parse({});
     this.activity = ActivityMetricsSchema.parse({});
+    this.spendHistory = SpendHistorySchema.parse({});
   }
 
-  addCost(category: string, amount: number): void {
+  addCost(category: string, amount: number, now = Date.now()): void {
     this.costs[category] = (this.costs[category] ?? 0) + amount;
+    recordSpendSample(this.spendHistory, { cost: amount }, now);
   }
 
-  addUsage(usage: TokenUsageInput, category?: string): void {
+  addUsage(usage: TokenUsageInput, category?: string, now = Date.now()): void {
     const delta = normalizeTokenUsageInput(usage);
     this.tokens = addTokenTotals(this.tokens, delta);
+    recordSpendSample(this.spendHistory, { inputTokens: delta.totalInputTokens, outputTokens: delta.totalOutputTokens }, now);
     if (category) {
       const existing = this.tokensByCategory[category] ?? TokenUsageTotalsSchema.parse({});
       this.tokensByCategory[category] = addTokenTotals(existing, delta);
     }
   }
 
-  addLatency(sample: LatencySampleInput): void {
+  addLatency(sample: LatencySampleInput, now = Date.now()): void {
     this.latency.requestCount += 1;
+    recordSpendSample(this.spendHistory, { requests: 1 }, now);
     this.latency.totalElapsedMs += sample.elapsedMs;
     this.latency.recentElapsedMs = pushBoundedSample(this.latency.recentElapsedMs, sample.elapsedMs);
 
@@ -130,6 +141,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
     this.latency = deepClone(parsed.latency);
     this.errors = deepClone(parsed.errors);
     this.activity = deepClone(parsed.activity);
+    this.spendHistory = deepClone(parsed.spendHistory);
   }
 
   toMetricsData(): AgentMetricsData {
@@ -140,6 +152,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
       latency: this.latency,
       errors: this.errors,
       activity: this.activity,
+      spendHistory: this.spendHistory,
     });
   }
 
@@ -156,6 +169,7 @@ export class CostTrackingState extends AgentStateSlice<typeof serializationSchem
     this.latency = deepClone(parsed.latency);
     this.errors = deepClone(parsed.errors);
     this.activity = deepClone(parsed.activity);
+    this.spendHistory = deepClone(parsed.spendHistory);
   }
 
   show(): string {

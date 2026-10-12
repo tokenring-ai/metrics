@@ -5,12 +5,17 @@ import {
   categoryShares,
   filterAgents,
   formatAgentIdShort,
+  formatBucketLabel,
   formatCount,
   formatMs,
   formatPercent,
+  formatRelativeTime,
   formatTps,
   formatUsd,
+  modelTokenRows,
   shortCategoryLabel,
+  sortAgents,
+  sortHistory,
   sumRecord,
   topRecordEntries,
 } from "./formatters.ts";
@@ -187,5 +192,74 @@ describe("filterAgents", () => {
   test("filters by search", () => {
     expect(filterAgents(agents, "all", "research").map(a => a.agentId)).toEqual(["a2"]);
     expect(filterAgents(agents, "idle", "code").map(a => a.agentId)).toEqual(["a3"]);
+  });
+});
+
+describe("sortAgents", () => {
+  const agent = (displayName: string, total: number, tokens: number, requests: number, errors: number) => ({
+    displayName,
+    total,
+    tokens: { totalInputTokens: tokens, totalOutputTokens: 0 },
+    latency: { requestCount: requests },
+    errors: { errorsByProvider: { p: errors }, errorsByType: {} },
+  });
+  const rows = [agent("b", 1, 10, 5, 0), agent("a", 2, 5, 1, 3), agent("c", 0, 20, 2, 1)];
+  const names = (sorted: { displayName: string }[]) => sorted.map(row => row.displayName);
+
+  test("orders numeric keys descending and names ascending", () => {
+    expect(names(sortAgents(rows, "spend"))).toEqual(["a", "b", "c"]);
+    expect(names(sortAgents(rows, "tokens"))).toEqual(["c", "b", "a"]);
+    expect(names(sortAgents(rows, "requests"))).toEqual(["b", "c", "a"]);
+    expect(names(sortAgents(rows, "errors"))).toEqual(["a", "c", "b"]);
+    expect(names(sortAgents(rows, "name"))).toEqual(["a", "b", "c"]);
+  });
+
+  test("breaks ties by name and does not mutate the input", () => {
+    const tied = [agent("z", 1, 0, 0, 0), agent("m", 1, 0, 0, 0)];
+    expect(names(sortAgents(tied, "spend"))).toEqual(["m", "z"]);
+    expect(names(tied)).toEqual(["z", "m"]);
+  });
+});
+
+describe("spend and history helpers", () => {
+  test("joins model tokens with cost and drops token-less categories", () => {
+    const usage = (i: number, o: number) => ({ totalInputTokens: i, totalOutputTokens: o, totalCachedTokens: 0, totalReasoningTokens: 0 });
+    const rows = modelTokenRows({ "Chat (a)": usage(10, 10), "Chat (b)": usage(60, 20), "Chat (empty)": usage(0, 0) }, { "Chat (b)": 0.5, "Web Search": 1 });
+    expect(rows.map(r => r.category)).toEqual(["Chat (b)", "Chat (a)"]);
+    expect(rows[0]!.cost).toBe(0.5);
+    expect(rows[0]!.share).toBe(0.8);
+    expect(rows[1]!.cost).toBe(0);
+  });
+
+  test("sorts history rows by column with an optional flip", () => {
+    const row = (displayName: string, totalCost: number, updatedAt: number) => ({
+      displayName,
+      totalCost,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      requestCount: 0,
+      updatedAt,
+    });
+    const rows = [row("b", 1, 30), row("a", 3, 10), row("c", 2, 20)];
+    expect(sortHistory(rows, "updated").map(r => r.displayName)).toEqual(["b", "c", "a"]);
+    expect(sortHistory(rows, "spend").map(r => r.displayName)).toEqual(["a", "c", "b"]);
+    expect(sortHistory(rows, "spend", true).map(r => r.displayName)).toEqual(["b", "c", "a"]);
+    expect(sortHistory(rows, "name").map(r => r.displayName)).toEqual(["a", "b", "c"]);
+  });
+
+  test("formats relative times", () => {
+    const now = Date.UTC(2026, 9, 12);
+    expect(formatRelativeTime(now - 10_000, now)).toBe("just now");
+    expect(formatRelativeTime(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe("3h ago");
+    expect(formatRelativeTime(now - 2 * 86_400_000, now)).toBe("2d ago");
+    expect(formatRelativeTime(now - 30 * 86_400_000, now)).toMatch(/2026/);
+  });
+
+  test("labels buckets at a precision that suits the range", () => {
+    const t = new Date(2026, 9, 12, 14, 5).getTime();
+    expect(formatBucketLabel(t, "1h")).toMatch(/2:05/);
+    expect(formatBucketLabel(t, "7d")).toMatch(/^Mon 2/);
+    expect(formatBucketLabel(t, "30d")).toBe("Oct 12");
   });
 });

@@ -8,6 +8,8 @@ function createMockAgent(id = "agent-1"): Agent {
   const states = new Map<string, unknown>();
   const agent = {
     id,
+    displayName: `Agent ${id}`,
+    config: { agentType: "code" },
     initializeState(Slice: new (args: unknown) => CostTrackingState, args: unknown) {
       const state = new Slice(args);
       states.set(state.name, state);
@@ -141,6 +143,38 @@ describe("MetricsService", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]!.agentId).toBe("agent-42");
     expect(listed[0]!.totalCost).toBe(0.02);
+
+    // Identity is stamped on persist so History can name agents after they exit.
+    expect(stored!.metrics.identity).toEqual({ displayName: "Agent agent-42", agentType: "code" });
+    // Every cost, usage and latency sample lands in the spend time series.
+    const hourly = stored!.metrics.spendHistory.hourly;
+    expect(hourly).toHaveLength(1);
+    expect(hourly[0]!.cost).toBeCloseTo(0.02);
+    expect(hourly[0]!.inputTokens).toBe(10);
+    expect(hourly[0]!.requests).toBe(1);
+  });
+
+  test("resetAllAgentMetrics resets every live agent", () => {
+    const service = new MetricsService();
+    const a = createMockAgent("a");
+    const b = createMockAgent("b");
+    service.attach(a);
+    service.attach(b);
+    service.addCost("Chat", 1, a);
+    service.addCost("Chat", 2, b);
+
+    expect(service.resetAllAgentMetrics([a, b])).toBe(2);
+    expect(a.getState(CostTrackingState).costs).toEqual({});
+    expect(b.getState(CostTrackingState).spendHistory.hourly).toEqual([]);
+  });
+
+  test("listAllAgentMetrics falls back to [] when the provider cannot list full records", async () => {
+    const service = new MetricsService();
+    expect(await service.listAllAgentMetrics()).toEqual([]);
+    const storage = createMemoryStorage();
+    service.setMetricsProvider(storage);
+    expect(service.hasPersistence).toBe(true);
+    expect(await service.listAllAgentMetrics()).toEqual([]);
   });
 
   test("resetAgentMetrics clears state and deletes storage row", async () => {

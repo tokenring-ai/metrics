@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { aggregateCostSummary } from "./costSummary.ts";
+import { agentCostsFromMetrics, aggregateCostSummary } from "./costSummary.ts";
+import { AgentMetricsDataSchema } from "./MetricsStorage.ts";
 import type { AgentCosts } from "./rpc/schema.ts";
 
 function agent(partial: Partial<AgentCosts> & Pick<AgentCosts, "agentId" | "total" | "costs">): AgentCosts {
@@ -13,6 +14,7 @@ function agent(partial: Partial<AgentCosts> & Pick<AgentCosts, "agentId" | "tota
       totalCachedTokens: 0,
       totalReasoningTokens: 0,
     },
+    tokensByCategory: partial.tokensByCategory ?? {},
     latency: partial.latency ?? {
       requestCount: 0,
       avgElapsedMs: 0,
@@ -109,5 +111,60 @@ describe("aggregateCostSummary", () => {
     expect(summary.tokens.totalInputTokens).toBe(0);
     expect(summary.latency.requestCount).toBe(0);
     expect(summary.activity.totalSteps).toBe(0);
+  });
+
+  test("aggregates tokens per model category and TTFT percentiles", () => {
+    const usage = (input: number, output: number) => ({
+      totalInputTokens: input,
+      totalOutputTokens: output,
+      totalCachedTokens: 0,
+      totalReasoningTokens: 0,
+    });
+    const latency = (ttft: number) => ({
+      requestCount: 1,
+      avgElapsedMs: 100,
+      avgTimeToFirstTokenMs: ttft,
+      avgTokensPerSecond: 0,
+      p50TimeToFirstTokenMs: ttft,
+      p95TimeToFirstTokenMs: ttft * 2,
+      p99TimeToFirstTokenMs: ttft * 3,
+    });
+    const summary = aggregateCostSummary([
+      agent({ agentId: "a", total: 0, costs: {}, tokensByCategory: { "Chat (x)": usage(10, 1), "Chat (y)": usage(5, 5) }, latency: latency(100) }),
+      agent({ agentId: "b", total: 0, costs: {}, tokensByCategory: { "Chat (x)": usage(20, 2) }, latency: latency(300) }),
+    ]);
+    expect(summary.tokensByCategory["Chat (x)"]).toEqual(usage(30, 3));
+    expect(summary.tokensByCategory["Chat (y)"]).toEqual(usage(5, 5));
+    expect(summary.latency.p50TimeToFirstTokenMs).toBe(200);
+    expect(summary.latency.p99TimeToFirstTokenMs).toBe(600);
+  });
+});
+
+describe("agentCostsFromMetrics", () => {
+  test("projects a stored record, including TTFT percentiles", () => {
+    const metrics = AgentMetricsDataSchema.parse({
+      costs: { "Chat (x)": 0.5 },
+      tokensByCategory: { "Chat (x)": { totalInputTokens: 7 } },
+      latency: {
+        requestCount: 2,
+        totalElapsedMs: 400,
+        recentElapsedMs: [100, 300],
+        recentTimeToFirstTokenMs: [50, 150],
+        timeToFirstTokenCount: 2,
+        totalTimeToFirstTokenMs: 200,
+      },
+    });
+    const row = agentCostsFromMetrics(metrics, { agentId: "z", displayName: "Z", agentType: "code", idle: true });
+    expect(row.total).toBe(0.5);
+    expect(row.tokensByCategory["Chat (x)"]?.totalInputTokens).toBe(7);
+    expect(row.latency.p50TimeToFirstTokenMs).toBe(100);
+    expect(row.latency.p99TimeToFirstTokenMs).toBeCloseTo(149);
+    expect(row.latency.p99ElapsedMs).toBeCloseTo(298);
+  });
+
+  test("returns empty metrics for an agent without state", () => {
+    const row = agentCostsFromMetrics(null, { agentId: "n", displayName: "N", agentType: "code", idle: true });
+    expect(row.total).toBe(0);
+    expect(row.tokensByCategory).toEqual({});
   });
 });

@@ -130,6 +130,20 @@ export default class MetricsService implements TokenRingService {
     }
   }
 
+  /** Reset live metrics for every given agent. Returns how many were reset. */
+  resetAllAgentMetrics(agents: Iterable<Agent>): number {
+    let count = 0;
+    for (const agent of agents) {
+      try {
+        this.resetAgentMetrics(agent);
+        count++;
+      } catch {
+        // Agent without metrics state attached: nothing to reset.
+      }
+    }
+    return count;
+  }
+
   // ── Storage helpers ──────────────────────────────────────────────────────
 
   async persistAgentMetrics(agent: Agent): Promise<void> {
@@ -144,7 +158,8 @@ export default class MetricsService implements TokenRingService {
 
     await this.metricsProvider.storeAgentMetrics({
       agentId: agent.id,
-      metrics,
+      // Stamp who the agent was so the History view can name it after it exits.
+      metrics: { ...metrics, identity: { displayName: agent.displayName, agentType: agent.config.agentType } },
       updatedAt: Date.now(),
     });
   }
@@ -157,6 +172,17 @@ export default class MetricsService implements TokenRingService {
   async listAgentMetrics(): Promise<AgentMetricsListItem[]> {
     if (!this.metricsProvider) return [];
     return this.metricsProvider.listAgentMetrics();
+  }
+
+  /** Full stored metrics for every agent, or [] when the provider cannot list them. */
+  async listAllAgentMetrics(): Promise<StoredAgentMetrics[]> {
+    if (!this.metricsProvider?.listAllAgentMetrics) return [];
+    return this.metricsProvider.listAllAgentMetrics();
+  }
+
+  /** Whether stored (cross-session) metrics are available at all. */
+  get hasPersistence(): boolean {
+    return this.metricsProvider !== null;
   }
 
   private schedulePersist(agent: Agent): void {
