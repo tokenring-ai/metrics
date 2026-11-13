@@ -32,6 +32,7 @@ import KeyValueList from "../features/metrics/KeyValueList.tsx";
 import { LiveStatusBadge, StaleBanner } from "../features/metrics/LiveStatus.tsx";
 import ModelTokenTable from "../features/metrics/ModelTokenTable.tsx";
 import SpendOverTime from "../features/metrics/SpendOverTime.tsx";
+import { METRICS_GRADIENT } from "../ids.ts";
 
 const KIND_BAR: Record<ReturnType<typeof categoryKind>, string> = {
   chat: "bg-accent",
@@ -147,7 +148,7 @@ export default function MetricsOverviewView() {
 
   // One header across loading/error/ready branches so the live badge never flickers away.
   const header = (
-    <ViewHeader title="Spend overview" dashboardId="metrics" subtitle="Live totals across agents">
+    <ViewHeader title="Spend overview" icon={DollarSign} iconGradient={METRICS_GRADIENT} subtitle="Live totals across agents">
       <LiveStatusBadge status={streamStatus.status} showSpinner={streamStatus.showSpinner} />
       {refreshButton}
     </ViewHeader>

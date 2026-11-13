@@ -1,30 +1,28 @@
+import { usePanelTitle } from "@tokenring-ai/one-frontend/apps/panelHooks.ts";
 import ErrorState from "@tokenring-ai/one-frontend/components/ui/ErrorState.tsx";
 import LoadingState from "@tokenring-ai/one-frontend/components/ui/LoadingState.tsx";
-import type { ViewProps } from "@tokenring-ai/one-frontend/dock/types.ts";
-import { useOpenAgentChat } from "@tokenring-ai/one-frontend/dock/useOpenAgentChat.ts";
+import type { ViewProps } from "@tokenring-ai/one-frontend/layout/define.ts";
+import { usePaneLink } from "@tokenring-ai/one-frontend/layout/hooks.ts";
 import { Badge, Button, EmptyState, ViewHeader, ViewShell } from "@tokenring-ai/one-frontend/ui";
-import { MessageSquare, SearchX } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { MessageSquare, ReceiptText, SearchX } from "lucide-react";
+import type { ReactNode } from "react";
 import AgentBreakdown from "../features/metrics/AgentBreakdown.tsx";
 import { formatAgentIdShort, formatRelativeTime, formatUsd } from "../features/metrics/formatters.ts";
+import { METRICS_GRADIENT } from "../ids.ts";
 import { useAgentMetricsHistory } from "../lib/metricsQueries.ts";
-
-export type MetricsAgentDetailParams = { agentId?: string | undefined };
 
 /**
  * Full metrics breakdown for one agent, running or stored. Opened from the
  * History view; one panel per agent.
  */
-export default function MetricsAgentDetailView({ params, panel }: ViewProps<MetricsAgentDetailParams>) {
-  const agentId = params.agentId;
+export default function MetricsAgentDetailPane({ params }: ViewProps) {
+  const agentId = params["agentId"];
   const detail = useAgentMetricsHistory(agentId);
-  const openAgentChat = useOpenAgentChat();
+  const paneLink = usePaneLink();
   const result = detail.data;
   const agent = result?.status === "success" ? result.agent : undefined;
 
-  useEffect(() => {
-    if (agent) panel.setTitle(`${agent.displayName} · metrics`);
-  }, [agent, panel]);
+  usePanelTitle(agent ? `${agent.displayName} · metrics` : null);
 
   let body: ReactNode;
   if (!agentId) {
@@ -62,7 +60,7 @@ export default function MetricsAgentDetailView({ params, panel }: ViewProps<Metr
           <div className="flex flex-col items-end gap-2 shrink-0">
             <span className="text-lg font-semibold tabular-nums text-primary">{formatUsd(agent.total)}</span>
             {result.live ? (
-              <Button variant="secondary" icon={MessageSquare} onClick={() => openAgentChat(agent.agentId)}>
+              <Button variant="secondary" icon={MessageSquare} onClick={() => paneLink("chat", { agentId: agent.agentId })}>
                 Open chat
               </Button>
             ) : null}
@@ -76,7 +74,7 @@ export default function MetricsAgentDetailView({ params, panel }: ViewProps<Metr
   return (
     <ViewShell
       pad="page"
-      header={<ViewHeader title="Agent metrics" dashboardId="metrics" subtitle={agent?.displayName ?? agentId ?? ""} />}
+      header={<ViewHeader title="Agent metrics" icon={ReceiptText} iconGradient={METRICS_GRADIENT} subtitle={agent?.displayName ?? agentId ?? ""} />}
       data-testid="metrics-agent-detail-view"
     >
       {body}

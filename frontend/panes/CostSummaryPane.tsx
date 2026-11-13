@@ -8,7 +8,7 @@ import { Link } from "react-router-dom";
 import { formatCount, formatUsd, shortCategoryLabel, topRecordEntries } from "../features/metrics/formatters.ts";
 
 /** Headline spend, token and agent numbers for the main dashboard. */
-export default function CostSummaryView() {
+export default function CostSummaryPane() {
   const summary = useCostSummary();
 
   if (summary.isLoading && !summary.data) return <LoadingState size="sm" className="h-full" />;

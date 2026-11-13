@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DeclarativeLayout, ViewDefinition } from "@tokenring-ai/one-frontend/dock/types.ts";
-import { createFakeDashboardApi, renderView } from "@tokenring-ai/one-frontend/test/dock.tsx";
+import { defineView, type ViewDefinition } from "@tokenring-ai/one-frontend/layout/define.ts";
+import { createLayoutRegistry } from "@tokenring-ai/one-frontend/layout/registry.ts";
+import type { LayoutTemplate } from "@tokenring-ai/one-frontend/layout/types.ts";
+import { renderLayoutApp, renderLayoutView } from "@tokenring-ai/one-frontend/test/layout.tsx";
+import { MessageSquare } from "lucide-react";
 import type React from "react";
-import { Route } from "react-router-dom";
 
 const emptyTokens = {
   totalInputTokens: 0,
@@ -231,34 +233,39 @@ void mock.module("@tokenring-ai/one-frontend/lib/transcriptExport.ts", () => ({ 
 const PassThroughFocusTrap = ({ children }: { children: React.ReactNode }) => children;
 void mock.module("focus-trap-react", () => ({ FocusTrap: PassThroughFocusTrap, default: PassThroughFocusTrap }));
 
-const { default: contribution } = await import("../app.tsx");
+const { METRICS_APP, default: layout } = await import("../layout.ts");
+const { default: metricsViews } = await import("../views.tsx");
 
-const viewById = (id: string) => contribution.views.find(view => view.id === id) as ViewDefinition<any>;
-const getView = (id: string) => contribution.views.find(view => view.id === id);
-const dashboard = contribution.dashboards[0]!;
+const viewById = (id: string) => metricsViews.views.find(view => view.id === id) as ViewDefinition;
 
-async function renderMetricsView(viewId: string, options: { attached?: boolean; params?: Record<string, unknown> } = {}) {
-  const api = createFakeDashboardApi({ dashboardId: "metrics", getView });
-  if (options.attached === false) {
-    // The pre-attach proxy reports isAttached: false; openView would only queue.
-    (api as { isAttached: boolean }).isAttached = false;
-  }
-  const result = renderView(viewById(viewId), options.params ?? {}, {
-    api,
-    path: "/metrics",
-    routes: ["/metrics"],
-    // Clicking an agent falls back to the /agent/:id deep link when detached.
-    extraRoutes: <Route path="/agent/:agentId" element={<div>Agent chat</div>} />,
+function ChatStub() {
+  return <p>chat stub</p>;
+}
+
+const chatView = defineView({
+  id: "chat",
+  kind: "agent",
+  title: params => params["agentId"] ?? "Chat",
+  icon: MessageSquare,
+  route: "agent/:agentId",
+  instanceKey: params => params["agentId"] ?? "",
+  component: ChatStub,
+});
+
+async function renderMetricsView(viewId: string, options: { params?: Record<string, string> } = {}) {
+  const result = renderLayoutView(viewById(viewId), {
+    params: options.params ?? {},
+    views: [chatView, ...metricsViews.views],
+    kinds: [...(layout.kinds ?? []), { id: "agent", label: "Agents", plural: "agent chats" }],
   });
   // The view components are lazy chunks; wait for the Suspense fallback to clear.
   await screen.findByTestId(`${viewId}-view`);
   return result;
 }
 
-function panelViewIds(layout: DeclarativeLayout): string[] {
-  if (layout.kind === "panel") return [layout.view];
-  if (layout.kind === "tabs") return layout.panels.flatMap(panel => panelViewIds(panel));
-  return layout.children.flatMap(child => panelViewIds(child));
+function templateViewIds(template: LayoutTemplate): string[] {
+  if ("split" in template) return template.children.flatMap(child => templateViewIds(child));
+  return (template.items ?? []).map(item => (typeof item === "string" ? item : item.view));
 }
 
 describe("MetricsOverviewView", () => {
@@ -525,21 +532,11 @@ describe("MetricsAgentsView", () => {
 
   it("opens the agent's chat panel through the dock api when attached", async () => {
     const user = userEvent.setup();
-    const { api } = await renderMetricsView("metrics-agents");
+    const app = await renderMetricsView("metrics-agents");
 
     await user.click(screen.getByText("Code Engineer #1"));
-    expect(api.opened).toEqual([expect.objectContaining({ viewId: "chat", params: { agentId: "agent-active-1" } })]);
-    expect(screen.getByTestId("pathname")).toHaveTextContent("/metrics");
-  });
-
-  it("falls back to the /agent/:id deep link when no dock surface is attached", async () => {
-    const user = userEvent.setup();
-    const { api } = await renderMetricsView("metrics-agents", { attached: false });
-
-    await user.click(screen.getByText("Researcher"));
-    expect(api.opened).toEqual([]);
-    // The fallback route replaces the panel.
-    expect(screen.getByText("Agent chat")).toBeInTheDocument();
+    expect(await screen.findByText("chat stub")).toBeInTheDocument();
+    expect(app.location().pathname).toBe("/test/agent/agent-active-1");
   });
 
   it("confirms and resets agent metrics", async () => {
@@ -673,9 +670,10 @@ describe("MetricsHistoryView", () => {
 
   it("opens the agent detail view from a row", async () => {
     const user = userEvent.setup();
-    const { api } = await renderMetricsView("metrics-history");
+    detailState = { status: "agentNotFound" };
+    await renderMetricsView("metrics-history");
     await user.click(screen.getByText("Archivist"));
-    expect(api.opened).toEqual([expect.objectContaining({ viewId: "metrics-agent-detail", params: { agentId: "agent-gone-9" } })]);
+    expect(await screen.findByTestId("metrics-agent-detail-view")).toBeInTheDocument();
   });
 
   it("exports the history list as CSV", async () => {
@@ -734,22 +732,30 @@ describe("MetricsAgentDetailView", () => {
   });
 });
 
-describe("metrics dashboard definition", () => {
-  it("derives a default layout from registered view ids, overview above agents", () => {
-    const registeredViewIds = contribution.views.map(view => view.id);
-    const layout = dashboard.defaultLayout;
+describe("metrics app definition", () => {
+  it("lays out the overview above the agents and history tabs, with every view registered", () => {
+    const registeredViewIds = metricsViews.views.map(view => view.id);
+    const layoutViewIds = templateViewIds(METRICS_APP.layout);
 
-    expect(layout.kind).toBe("column");
-    expect(panelViewIds(layout)).toEqual(["metrics-overview", "metrics-agents", "metrics-history"]);
-    for (const viewId of panelViewIds(layout)) {
-      expect(registeredViewIds).toContain(viewId);
+    expect(METRICS_APP.layout).toMatchObject({ split: "column" });
+    expect(layoutViewIds).toEqual(["metrics-overview", "metrics-agents", "metrics-history"]);
+    for (const id of METRICS_APP.views) {
+      if (id !== "chat") expect(registeredViewIds).toContain(id);
     }
+    expect(METRICS_APP.views).toContain("chat");
     expect(registeredViewIds).toContain("metrics-cost-summary");
+    expect(METRICS_APP.path).toBe("/metrics");
   });
 
-  it("titles the document after the dashboard", () => {
-    expect(dashboard.documentTitle?.()).toBe("Metrics");
-    expect(dashboard.routePath).toBe("/metrics");
+  it("mounts the app at /metrics with the overview open", async () => {
+    const registry = createLayoutRegistry({
+      apps: [METRICS_APP],
+      views: [...metricsViews.views, chatView],
+      kinds: [...(layout.kinds ?? []), { id: "agent", label: "Agents", plural: "agent chats" }],
+    });
+    const rendered = renderLayoutApp({ registry, url: "/metrics" });
+    expect(rendered.location().pathname).toBe("/metrics");
+    expect(await screen.findByTestId("metrics-overview-view")).toBeInTheDocument();
   });
 });
 
@@ -759,8 +765,7 @@ describe("CostSummaryView", () => {
   });
 
   async function renderCostSummary() {
-    const api = createFakeDashboardApi({ dashboardId: "home", getView });
-    renderView(viewById("metrics-cost-summary"), {}, { api, path: "/", routes: ["/"] });
+    renderLayoutView(viewById("metrics-cost-summary"));
     await screen.findByText("Total spend");
   }
 

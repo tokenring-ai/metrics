@@ -7,16 +7,16 @@ import SearchInput from "@tokenring-ai/one-frontend/components/ui/SearchInput.ts
 import { toastManager } from "@tokenring-ai/one-frontend/components/ui/toast.tsx";
 import ViewHeader from "@tokenring-ai/one-frontend/components/ui/ViewHeader.tsx";
 import ViewShell from "@tokenring-ai/one-frontend/components/ui/ViewShell.tsx";
-import { useOpenAgentChat } from "@tokenring-ai/one-frontend/dock/useOpenAgentChat.ts";
 import { useConfirmDialog } from "@tokenring-ai/one-frontend/hooks/useConfirmDialog.tsx";
 import { useExpandedSet } from "@tokenring-ai/one-frontend/hooks/useExpandedSet.ts";
 import { type FilterTabDefinition, useFilterTabs } from "@tokenring-ai/one-frontend/hooks/useFilterTabs.ts";
 import { useLiveStreamStatusFromSWR } from "@tokenring-ai/one-frontend/hooks/useLiveStreamStatus.ts";
+import { usePaneLink } from "@tokenring-ai/one-frontend/layout/hooks.ts";
 import { cn } from "@tokenring-ai/one-frontend/lib/utils.ts";
 import { metricsRPCClient, useCostSummary } from "@tokenring-ai/one-frontend/rpc.ts";
 import { Button, Select } from "@tokenring-ai/one-frontend/ui";
 import formatError from "@tokenring-ai/utility/error/formatError";
-import { Activity, ChevronDown, ChevronRight, Download, Loader2, Pause, RotateCcw, Search } from "lucide-react";
+import { Activity, ChevronDown, ChevronRight, DollarSign, Download, Loader2, Pause, RotateCcw, Search } from "lucide-react";
 import { memo, type ReactNode, useCallback, useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import AgentBreakdown, { KIND_TEXT, MiniStatRow } from "../features/metrics/AgentBreakdown.tsx";
@@ -37,6 +37,7 @@ import {
   sumRecord,
 } from "../features/metrics/formatters.ts";
 import { LiveStatusBadge, StaleBanner } from "../features/metrics/LiveStatus.tsx";
+import { METRICS_GRADIENT } from "../ids.ts";
 import { downloadCsv } from "../lib/csv.ts";
 import { isMetricsKey } from "../lib/metricsQueries.ts";
 
@@ -63,7 +64,8 @@ const AgentCostRow = memo(function AgentCostRow({
   expanded: boolean;
   onToggleExpand: (agentId: string) => void;
 }) {
-  const openAgentChat = useOpenAgentChat();
+  const paneLink = usePaneLink();
+  const openAgentChat = (agentId: string) => paneLink("chat", { agentId });
   const barWidth = maxTotal > 0 ? Math.max((agent.total / maxTotal) * 100, agent.total > 0 ? 2 : 0) : 0;
   const allCategories = categoryShares(agent.costs, agent.total);
   const topCategories = allCategories.slice(0, 3);
@@ -345,7 +347,7 @@ export default function MetricsAgentsView() {
     <ViewShell
       scroll={false}
       header={
-        <ViewHeader title="Agent spend" dashboardId="metrics" subtitle="Per-agent cost, tokens and errors">
+        <ViewHeader title="Agent spend" icon={DollarSign} iconGradient={METRICS_GRADIENT} subtitle="Per-agent cost, tokens and errors">
           <LiveStatusBadge status={streamStatus.status} showSpinner={streamStatus.showSpinner} />
           <Button
             variant="secondary"

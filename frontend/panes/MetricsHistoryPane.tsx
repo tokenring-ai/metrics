@@ -1,16 +1,16 @@
 import type { AgentHistoryItem } from "@tokenring-ai/metrics/rpc/schema";
 import AsyncListBody from "@tokenring-ai/one-frontend/components/ui/AsyncListBody.tsx";
 import SearchInput from "@tokenring-ai/one-frontend/components/ui/SearchInput.tsx";
-import { useDashboardApi } from "@tokenring-ai/one-frontend/dock/DashboardApiContext.tsx";
+import { usePaneLink } from "@tokenring-ai/one-frontend/layout/hooks.ts";
 import { cn } from "@tokenring-ai/one-frontend/lib/utils.ts";
 import { Button, EmptyState, ViewHeader, ViewShell } from "@tokenring-ai/one-frontend/ui";
 import { ArrowDown, ArrowUp, Download, History, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { historyCsvColumns } from "../features/metrics/csvColumns.ts";
 import { formatAgentIdShort, formatCount, formatRelativeTime, formatUsd, type HistorySort, sortHistory } from "../features/metrics/formatters.ts";
+import { METRICS_AGENT_DETAIL_VIEW_ID, METRICS_GRADIENT } from "../ids.ts";
 import { downloadCsv } from "../lib/csv.ts";
 import { useMetricsHistory } from "../lib/metricsQueries.ts";
-import { METRICS_AGENT_DETAIL_VIEW_ID } from "../manifest.ts";
 
 const COLUMNS: Array<{ id: HistorySort; label: string; numeric: boolean }> = [
   { id: "name", label: "Agent", numeric: false },
@@ -32,7 +32,7 @@ function matches(row: AgentHistoryItem, query: string): boolean {
  * that agent's {@link MetricsAgentDetailView}.
  */
 export default function MetricsHistoryView() {
-  const api = useDashboardApi();
+  const paneLink = usePaneLink();
   const history = useMetricsHistory();
   const [sort, setSort] = useState<HistorySort>("updated");
   const [ascending, setAscending] = useState(false);
@@ -57,7 +57,7 @@ export default function MetricsHistoryView() {
   };
 
   const header = (
-    <ViewHeader title="History" dashboardId="metrics" subtitle="Agents across sessions">
+    <ViewHeader title="History" icon={History} iconGradient={METRICS_GRADIENT} subtitle="Agents across sessions">
       <Button
         variant="secondary"
         icon={Download}
@@ -131,7 +131,7 @@ export default function MetricsHistoryView() {
                     <td className="px-3 py-2 max-w-[16rem]">
                       <button
                         type="button"
-                        onClick={() => api.openView(METRICS_AGENT_DETAIL_VIEW_ID, { agentId: row.agentId }, { position: "right" })}
+                        onClick={() => paneLink(METRICS_AGENT_DETAIL_VIEW_ID, { agentId: row.agentId })}
                         className="block w-full min-w-0 text-left rounded focus-ring cursor-pointer"
                         title="Show full breakdown"
                       >
