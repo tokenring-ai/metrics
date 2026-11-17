@@ -783,4 +783,17 @@ describe("CostSummaryView", () => {
     await renderCostSummary();
     expect(screen.getByTestId("cost-summary-zero-hint")).toHaveTextContent("No spend recorded yet");
   });
+
+  it("does not claim nothing happened when tokens were used at no cost", async () => {
+    summaryState = {
+      data: { ...emptySummary, tokens: { ...emptyTokens, totalInputTokens: 18_000, totalOutputTokens: 400 } },
+      error: undefined,
+      isLoading: false,
+      isValidating: false,
+    };
+    await renderCostSummary();
+    const hint = screen.getByTestId("cost-summary-zero-hint");
+    expect(hint).toHaveTextContent("no cost was recorded");
+    expect(hint).not.toHaveTextContent("No spend recorded yet");
+  });
 });

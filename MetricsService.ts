@@ -50,6 +50,18 @@ export default class MetricsService implements TokenRingService {
     this.metricsProvider = provider;
   }
 
+  /** What an agent has spent so far: total cost in USD and input + output tokens. Null without metrics state. */
+  getAgentUsage(agent: Agent): { costUsd: number; tokens: number } | null {
+    let state: CostTrackingState;
+    try {
+      state = agent.getState(CostTrackingState);
+    } catch {
+      return null;
+    }
+    const costUsd = Object.values(state.costs).reduce((sum, amount) => sum + amount, 0);
+    return { costUsd, tokens: state.tokens.totalInputTokens + state.tokens.totalOutputTokens };
+  }
+
   // ── Cost (existing) ──────────────────────────────────────────────────────
 
   addCost(category: string, amount: number, agent: Agent): void {

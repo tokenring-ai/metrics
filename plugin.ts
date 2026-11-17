@@ -1,4 +1,4 @@
-import { AgentCommandService } from "@tokenring-ai/agent";
+import { AgentCommandService, AgentJobService } from "@tokenring-ai/agent";
 import type { TokenRingPlugin } from "@tokenring-ai/app";
 import { RpcService } from "@tokenring-ai/rpc";
 import { z } from "zod";
@@ -18,7 +18,9 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app) {
-    app.addService(MetricsService, new MetricsService());
+    const metricsService = app.addService(MetricsService, new MetricsService());
+    // The job engine reads a job agent's spend after each step, for its record and its cost limit.
+    app.waitForService(AgentJobService, jobService => jobService.setUsageReader(agent => metricsService.getAgentUsage(agent)));
     app.waitForService(AgentCommandService, agentCommandService => {
       agentCommandService.addAgentCommands(...agentCommands);
     });

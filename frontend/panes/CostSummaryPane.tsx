@@ -26,13 +26,19 @@ export default function CostSummaryPane() {
     <ViewShell pad="compact" bodyClassName="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Total spend" value={formatUsd(data.grandTotal)} />
-        <StatCard label="Agents" value={`${data.activeAgentCount} active`} sub={`${data.agentCount} tracked`} />
+        <StatCard
+          label="Agents with spend"
+          value={formatCount(data.agentCount)}
+          {...(data.activeAgentCount > 0 && { sub: `${formatCount(data.activeAgentCount)} working now` })}
+        />
         <StatCard label="Input tokens" value={formatCount(inputTokens)} />
         <StatCard label="Output tokens" value={formatCount(outputTokens)} />
       </div>
       {data.grandTotal === 0 && (
         <p className="text-xs text-muted" data-testid="cost-summary-zero-hint">
-          No spend recorded yet. Costs appear here as agents chat, generate media or call billable tools.
+          {inputTokens + outputTokens > 0
+            ? "Tokens were used, but no cost was recorded for them, as with local or free models."
+            : "No spend recorded yet. Costs appear here as agents chat, generate media or call billable tools."}
         </p>
       )}
       {topCategories.length > 0 && (
